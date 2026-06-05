@@ -18,8 +18,9 @@ export default function StarBorder({
   speed = "6s",
   ...rest
 }: StarBorderProps) {
+  const Comp: any = Component;
   return (
-    <Component
+    <Comp
       className={`relative inline-block py-[1px] overflow-hidden rounded-[20px] ${className}`}
       {...rest}
     >
@@ -40,6 +41,6 @@ export default function StarBorder({
       <div className="relative z-1 border text-[#17204E] text-center text-[16px] py-[16px] px-[26px] rounded-[20px] bg-gradient-to-b from-[#111] to-[#17204E] border-[#222] hover:bg-[#111] transition-colors">
         {children}
       </div>
-    </Component>
+    </Comp>
   );
 }
