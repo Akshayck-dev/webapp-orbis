@@ -4,14 +4,31 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Lock, Mail, ArrowRight, Eye, EyeOff } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { authApi } from "@/lib/api";
 
 export default function AdminLogin() {
   const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    router.push("/admin");
+    setError("");
+    setLoading(true);
+
+    try {
+      const token = await authApi.login({ email, password });
+      localStorage.setItem("auth_token", token);
+      router.push("/admin");
+    } catch (err) {
+      console.error(err);
+      setError("Invalid email or password");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -35,14 +52,22 @@ export default function AdminLogin() {
           </div>
 
           <form onSubmit={handleLogin} className="w-full space-y-5">
+            {error && (
+              <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl text-center">
+                {error}
+              </div>
+            )}
+            
             <div>
               <label className="block text-sm font-medium text-[#17204E] mb-2">Email Address</label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input 
-                  type="email" 
+                  type="text" 
                   required
-                  placeholder="admin@webapporbis.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="admin@webapporbis"
                   className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 pl-12 pr-4 text-[#17204E] focus:bg-white focus:border-[#057AF8] focus:ring-4 focus:ring-[#057AF8]/10 transition-all outline-none"
                 />
               </div>
@@ -55,6 +80,8 @@ export default function AdminLogin() {
                 <input 
                   type={showPassword ? "text" : "password"}
                   required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 pl-12 pr-12 text-[#17204E] focus:bg-white focus:border-[#057AF8] focus:ring-4 focus:ring-[#057AF8]/10 transition-all outline-none"
                 />
@@ -81,9 +108,9 @@ export default function AdminLogin() {
               <a href="#" className="text-sm font-medium text-[#057AF8] hover:text-[#035bb8] transition-colors">Forgot Password?</a>
             </div>
 
-            <button type="submit" className="w-full bg-[#057AF8] hover:bg-[#035bb8] text-white font-medium py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-[#057AF8]/20 group mt-2">
-              Sign In
-              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            <button disabled={loading} type="submit" className="w-full disabled:opacity-70 bg-[#057AF8] hover:bg-[#035bb8] text-white font-medium py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-[#057AF8]/20 group mt-2">
+              {loading ? "Signing In..." : "Sign In"}
+              {!loading && <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />}
             </button>
           </form>
 

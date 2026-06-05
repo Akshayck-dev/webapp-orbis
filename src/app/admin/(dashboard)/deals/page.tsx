@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Search, MoreVertical, Edit2, Trash2, Users, X } from "lucide-react";
+import { Plus, Search, Calendar, MoreVertical, Edit2, CheckCircle2, DollarSign, X, Trash2, Check, Loader2, ChevronDown } from "lucide-react";
 import { dealsApi, Deal } from "@/lib/api";
+import { FilterSelect } from "@/components/ui/FilterSelect";
+import { StatusSelect } from "@/components/ui/StatusSelect";
 
 const getStageColor = (stage: string) => {
   switch (stage) {
@@ -21,10 +23,10 @@ const getStageColor = (stage: string) => {
 
 const getStatusColor = (status: string) => {
   switch (status) {
-    case 'Active': return 'text-green-600 bg-green-50 border-green-200';
+    case 'In Progress': return 'text-blue-600 bg-blue-50 border-blue-200';
     case 'On Hold': return 'text-orange-600 bg-orange-50 border-orange-200';
+    case 'Completed': return 'text-green-600 bg-green-50 border-green-200';
     case 'Cancelled': return 'text-red-600 bg-red-50 border-red-200';
-    case 'Closed': return 'text-gray-600 bg-gray-50 border-gray-200';
     default: return 'text-gray-600 bg-gray-50 border-gray-200';
   }
 };
@@ -36,8 +38,11 @@ const PROJECT_TYPES = [
   "ERP/CRM Development",
   "Android Application",
   "iOS Application",
-  "Website Maintenance"
+  "Website Maintenance",
+  "Others"
 ];
+
+const STATUSES = ["In Progress", "On Hold", "Completed", "Cancelled"];
 
 const STAGES = [
   "New Deal",
@@ -50,21 +55,38 @@ const STAGES = [
   "Closed"
 ];
 
-const STATUSES = ["Active", "On Hold", "Cancelled", "Closed"];
+
 
 export default function DealsPage() {
+  const [filterType, setFilterType] = useState("All Types");
+  const [filterStatus, setFilterStatus] = useState("All Statuses");
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
+  
+  // Custom form state to separate client/name from remarks
+  const [formName, setFormName] = useState("");
+  const [formClient, setFormClient] = useState("");
   const [formData, setFormData] = useState<Deal>({
-    name: "",
-    client: "",
-    type: "Static Website Development",
-    stage: "New Deal",
-    status: "Active",
-    team: []
+    projectType: "Static Website Development",
+    totalAmount: 0,
+    advanceAmount: 0,
+    dueDate: new Date().toISOString().split('T')[0],
+    status: "In Progress",
+    remarks: ""
   });
+
+  const [submitError, setSubmitError] = useState("");
+  const [itemToDelete, setItemToDelete] = useState<number | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [updatingRowId, setUpdatingRowId] = useState<number | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   useEffect(() => {
     fetchDeals();
@@ -82,19 +104,40 @@ export default function DealsPage() {
     }
   };
 
+  // Helper to parse Name and Client from remarks
+  const parseRemarks = (remarks: string = "") => {
+    const parts = remarks.split("|");
+    if (parts.length >= 2) {
+      return {
+        name: parts[0].replace("Name: ", "").trim(),
+        client: parts[1].replace("Client: ", "").trim(),
+        actualRemarks: parts.slice(2).join("|").trim()
+      };
+    }
+    return { name: "Unknown", client: "Unknown", actualRemarks: remarks };
+  };
+
   const handleOpenModal = (deal?: Deal) => {
     if (deal) {
       setEditingDeal(deal);
-      setFormData(deal);
+      const parsed = parseRemarks(deal.remarks);
+      setFormName(parsed.name);
+      setFormClient(parsed.client);
+      setFormData({
+        ...deal,
+        remarks: parsed.actualRemarks
+      });
     } else {
       setEditingDeal(null);
+      setFormName("");
+      setFormClient("");
       setFormData({
-        name: "",
-        client: "",
-        type: "Static Website Development",
-        stage: "New Deal",
-        status: "Active",
-        team: []
+        projectType: "Static Website Development",
+        totalAmount: 0,
+        advanceAmount: 0,
+        dueDate: new Date().toISOString().split('T')[0],
+        status: "In Progress",
+        remarks: ""
       });
     }
     setIsModalOpen(true);
@@ -103,39 +146,64 @@ export default function DealsPage() {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingDeal(null);
+    setSubmitError("");
   };
 
   const handleSaveDeal = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError("");
+    setIsSaving(true);
+    
+    // Bundle name and client into remarks
+    const bundledRemarks = `Name: ${formName} | Client: ${formClient} ${formData.remarks ? `| ${formData.remarks}` : ''}`;
+    
+    const dealToSave = {
+      ...formData,
+      remarks: bundledRemarks
+    };
+
     try {
-      await dealsApi.addOrUpdate(formData);
+      await dealsApi.addOrUpdate(dealToSave);
       await fetchDeals();
       handleCloseModal();
-    } catch (error) {
+      showToast(editingDeal ? "Deal updated successfully!" : "Deal created successfully!");
+    } catch (error: any) {
       console.error("Failed to save deal:", error);
+      setSubmitError(error.message || "Failed to save deal");
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleDeleteDeal = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this deal?")) return;
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
+    setIsSaving(true);
     try {
-      await dealsApi.delete(id);
+      await dealsApi.delete(itemToDelete);
       await fetchDeals();
+      setItemToDelete(null);
+      showToast("Deal deleted successfully!");
     } catch (error) {
       console.error("Failed to delete deal:", error);
+      showToast("Failed to delete deal", "error");
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleInlineChange = async (deal: Deal, field: string, value: string) => {
     const updatedDeal = { ...deal, [field]: value };
-    // Optimistic update
     setDeals(deals.map(d => d.id === deal.id ? updatedDeal : d));
+    if (deal.id) setUpdatingRowId(deal.id);
     try {
       await dealsApi.addOrUpdate(updatedDeal);
+      showToast(`Status updated to ${value}`, 'success');
     } catch (error) {
       console.error("Failed to update deal inline:", error);
-      // Revert on failure
       fetchDeals();
+      showToast("Failed to update status", "error");
+    } finally {
+      setUpdatingRowId(null);
     }
   };
 
@@ -168,14 +236,18 @@ export default function DealsPage() {
           </div>
           
           <div className="flex items-center gap-3">
-            <select className="bg-white border border-gray-200 rounded-lg px-4 py-2 text-sm text-gray-700 focus:outline-none focus:border-[#057AF8]">
-              <option>All Types</option>
-              {PROJECT_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
-            </select>
-            <select className="bg-white border border-gray-200 rounded-lg px-4 py-2 text-sm text-gray-700 focus:outline-none focus:border-[#057AF8]">
-              <option>All Stages</option>
-              {STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}
-            </select>
+            <FilterSelect 
+              value={filterType}
+              onChange={setFilterType}
+              options={PROJECT_TYPES}
+              placeholder="All Types"
+            />
+            <FilterSelect 
+              value={filterStatus}
+              onChange={setFilterStatus}
+              options={STATUSES}
+              placeholder="All Statuses"
+            />
           </div>
         </div>
 
@@ -221,24 +293,24 @@ export default function DealsPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <select 
+                    <StatusSelect
                       value={deal.stage || 'New Deal'}
-                      onChange={(e) => handleInlineChange(deal, 'stage', e.target.value)}
-                      className={`px-2.5 py-1.5 rounded-md text-xs font-semibold border appearance-none cursor-pointer pr-6 bg-no-repeat focus:outline-none focus:ring-2 focus:ring-[#057AF8]/50 ${getStageColor(deal.stage || '')}`}
-                      style={{ backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23666666%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")', backgroundSize: '8px 8px', backgroundPosition: 'right 8px center' }}
-                    >
-                      {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
+                      options={STAGES}
+                      onChange={(val) => handleInlineChange(deal, 'stage', val)}
+                      disabled={updatingRowId === deal.id}
+                      isLoading={updatingRowId === deal.id}
+                      getColor={getStageColor}
+                    />
                   </td>
                   <td className="px-6 py-4">
-                    <select 
-                      value={deal.status || 'Active'}
-                      onChange={(e) => handleInlineChange(deal, 'status', e.target.value)}
-                      className={`px-2.5 py-1.5 rounded-md text-xs font-semibold border appearance-none cursor-pointer pr-6 bg-no-repeat focus:outline-none focus:ring-2 focus:ring-[#057AF8]/50 ${getStatusColor(deal.status || '')}`}
-                      style={{ backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23666666%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")', backgroundSize: '8px 8px', backgroundPosition: 'right 8px center' }}
-                    >
-                      {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
+                    <StatusSelect
+                      value={deal.status || 'In Progress'}
+                      options={STATUSES}
+                      onChange={(val) => handleInlineChange(deal, 'status', val)}
+                      disabled={updatingRowId === deal.id}
+                      isLoading={updatingRowId === deal.id}
+                      getColor={getStatusColor}
+                    />
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex -space-x-2">
@@ -268,7 +340,7 @@ export default function DealsPage() {
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button 
-                        onClick={() => deal.id && handleDeleteDeal(deal.id)}
+                        onClick={() => deal.id && setItemToDelete(deal.id)}
                         className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -292,7 +364,7 @@ export default function DealsPage() {
         </div>
       </div>
 
-      {/* Modal */}
+      {/* Form Modal */}
       <AnimatePresence>
         {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
@@ -300,11 +372,11 @@ export default function DealsPage() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col"
+              className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-10">
                 <h2 className="text-xl font-bold text-[#17204E]">
-                  {editingDeal ? 'Edit Deal' : 'Create Deal'}
+                  {editingDeal ? 'Edit Deal' : 'Add New Deal'}
                 </h2>
                 <button 
                   onClick={handleCloseModal}
@@ -314,81 +386,191 @@ export default function DealsPage() {
                 </button>
               </div>
 
-              <form onSubmit={handleSaveDeal} className="p-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Deal Name</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={formData.name || ''}
-                    onChange={e => setFormData({...formData, name: e.target.value})}
-                    className="w-full bg-white border border-gray-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#057AF8] focus:border-transparent"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Client</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={formData.client || ''}
-                    onChange={e => setFormData({...formData, client: e.target.value})}
-                    className="w-full bg-white border border-gray-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#057AF8] focus:border-transparent"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Project Type</label>
-                    <select 
-                      value={formData.type || ''}
-                      onChange={e => setFormData({...formData, type: e.target.value})}
-                      className="w-full bg-white border border-gray-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#057AF8] focus:border-transparent"
-                    >
-                      {PROJECT_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
-                    </select>
+              <div className="p-6 overflow-y-auto">
+                <form id="deal-form" onSubmit={handleSaveDeal} className="space-y-6">
+                  {submitError && (
+                    <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg">
+                      {submitError}
+                    </div>
+                  )}
+                  {/* Basic Info */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Project Name</label>
+                      <input 
+                        type="text" 
+                        required
+                        value={formName}
+                        onChange={e => setFormName(e.target.value)}
+                        className="w-full bg-white border border-gray-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#057AF8] focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Client Name</label>
+                      <input 
+                        type="text" 
+                        required
+                        value={formClient}
+                        onChange={e => setFormClient(e.target.value)}
+                        className="w-full bg-white border border-gray-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#057AF8] focus:border-transparent"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Stage</label>
-                    <select 
-                      value={formData.stage || ''}
-                      onChange={e => setFormData({...formData, stage: e.target.value})}
-                      className="w-full bg-white border border-gray-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#057AF8] focus:border-transparent"
-                    >
-                      {STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}
-                    </select>
+
+                  {/* Financials */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Total Amount ($)</label>
+                      <input 
+                        type="number" 
+                        required
+                        value={formData.totalAmount || 0}
+                        onChange={e => setFormData({...formData, totalAmount: Number(e.target.value)})}
+                        className="w-full bg-white border border-gray-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#057AF8] focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Advance Amount ($)</label>
+                      <input 
+                        type="number" 
+                        required
+                        value={formData.advanceAmount || 0}
+                        onChange={e => setFormData({...formData, advanceAmount: Number(e.target.value)})}
+                        className="w-full bg-white border border-gray-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#057AF8] focus:border-transparent"
+                      />
+                    </div>
                   </div>
-                </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                  <select 
-                    value={formData.status || ''}
-                    onChange={e => setFormData({...formData, status: e.target.value})}
-                    className="w-full bg-white border border-gray-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#057AF8] focus:border-transparent"
-                  >
-                    {STATUSES.map(status => <option key={status} value={status}>{status}</option>)}
-                  </select>
-                </div>
+                  {/* Classification */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-[#17204E] mb-2">Project Type</label>
+                      <FilterSelect 
+                        value={formData.projectType || "Static Website Development"}
+                        onChange={(val) => setFormData({ ...formData, projectType: val })}
+                        options={PROJECT_TYPES}
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[#17204E] mb-2">Status</label>
+                      <FilterSelect 
+                        value={formData.status || "In Progress"}
+                        onChange={(val) => setFormData({ ...formData, status: val })}
+                        options={STATUSES}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
+                      <input 
+                        type="date" 
+                        required
+                        value={formData.dueDate || ''}
+                        onChange={e => setFormData({...formData, dueDate: e.target.value})}
+                        className="w-full bg-white border border-gray-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#057AF8] focus:border-transparent"
+                      />
+                    </div>
+                  </div>
 
-                <div className="pt-4 border-t border-gray-100 flex justify-end gap-3 mt-6">
-                  <button 
-                    type="button"
-                    onClick={handleCloseModal}
-                    className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit"
-                    className="px-4 py-2 text-sm font-medium text-white bg-[#057AF8] hover:bg-blue-600 rounded-lg transition-colors shadow-sm"
-                  >
-                    Save Deal
-                  </button>
-                </div>
-              </form>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Remarks (Optional)</label>
+                    <textarea 
+                      value={formData.remarks || ''}
+                      onChange={e => setFormData({...formData, remarks: e.target.value})}
+                      className="w-full bg-white border border-gray-300 rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#057AF8] focus:border-transparent"
+                      rows={3}
+                    />
+                  </div>
+                </form>
+              </div>
+
+              <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3 shrink-0">
+                <button 
+                  type="button"
+                  onClick={handleCloseModal}
+                  disabled={isSaving}
+                  className="px-4 py-2 text-sm font-medium text-gray-600 bg-white hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  form="deal-form"
+                  type="submit"
+                  disabled={isSaving}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-[#057AF8] hover:bg-blue-600 rounded-lg transition-colors shadow-sm disabled:opacity-70"
+                >
+                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  Save Deal
+                </button>
+              </div>
             </motion.div>
           </div>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {itemToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col text-center p-6"
+            >
+              <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash2 className="w-8 h-8 text-red-500" />
+              </div>
+              <h2 className="text-xl font-bold text-[#17204E] mb-2">Delete Deal?</h2>
+              <p className="text-gray-500 text-sm mb-6">
+                Are you sure you want to delete this deal? This action cannot be undone.
+              </p>
+              <div className="flex gap-3 w-full">
+                <button 
+                  onClick={() => setItemToDelete(null)}
+                  disabled={isSaving}
+                  className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={confirmDelete}
+                  disabled={isSaving}
+                  className="flex flex-1 items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-sm disabled:opacity-70"
+                >
+                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  Yes, Delete
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Toast Notification */}
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+            className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border ${
+              toast.type === 'success' 
+                ? 'bg-white border-green-100 text-gray-800' 
+                : 'bg-white border-red-100 text-gray-800'
+            }`}
+          >
+            {toast.type === 'success' ? (
+              <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center shrink-0">
+                <Check className="w-4 h-4 text-green-500" />
+              </div>
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                <X className="w-4 h-4 text-red-500" />
+              </div>
+            )}
+            <p className="font-medium text-sm pr-2">{toast.message}</p>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

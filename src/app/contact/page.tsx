@@ -4,9 +4,11 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Mail, MapPin, Phone, ArrowRight } from "lucide-react";
 import StarBorder from "@/components/ui/StarBorder";
+import { FilterSelect } from "@/components/ui/FilterSelect";
 
 export default function ContactPage() {
   const [formStatus, setFormStatus] = useState<"idle" | "submitting" | "success">("idle");
+  const [projectType, setProjectType] = useState("Website Development");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,13 +131,12 @@ export default function ContactPage() {
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-gray-600">Project Type</label>
-                  <select className="w-full bg-[#17204E]/5 border border-[#17204E]/10 rounded-xl px-4 py-3 text-[#17204E] focus:outline-none focus:border-[#057AF8] transition-colors appearance-none">
-                    <option className="bg-[#F8FAFC]">Website Development</option>
-                    <option className="bg-[#F8FAFC]">Mobile App</option>
-                    <option className="bg-[#F8FAFC]">ERP/CRM System</option>
-                    <option className="bg-[#F8FAFC]">UI/UX Design</option>
-                    <option className="bg-[#F8FAFC]">Other</option>
-                  </select>
+                  <FilterSelect 
+                    value={projectType}
+                    onChange={setProjectType}
+                    options={["Website Development", "Mobile App", "ERP/CRM System", "UI/UX Design", "Other"]}
+                    className="w-full bg-[#17204E]/5 border border-[#17204E]/10 text-[#17204E] py-3 shadow-none !rounded-xl hover:border-[#057AF8]/50 focus:ring-[#057AF8]/10"
+                  />
                 </div>
 
                 <div className="space-y-2">

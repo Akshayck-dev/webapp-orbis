@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Plus, Search, MoreVertical, Edit2, Trash2 } from "lucide-react";
+import { FilterSelect } from "@/components/ui/FilterSelect";
 
 const employees = [
   { id: 1, name: "Sarah Jenkins", role: "Lead Designer", department: "Design", status: "Active", email: "sarah.j@unlock360.com" },
@@ -13,6 +15,9 @@ const employees = [
 ];
 
 export default function Employees() {
+  const [filterDepartment, setFilterDepartment] = useState("All Departments");
+  const [filterStatus, setFilterStatus] = useState("All Status");
+
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
@@ -39,18 +44,18 @@ export default function Employees() {
           </div>
           
           <div className="flex items-center gap-3">
-            <select className="bg-white border border-gray-200 rounded-lg px-4 py-2 text-sm text-gray-700 focus:outline-none focus:border-[#057AF8]">
-              <option>All Departments</option>
-              <option>Design</option>
-              <option>Engineering</option>
-              <option>Marketing</option>
-            </select>
-            <select className="bg-white border border-gray-200 rounded-lg px-4 py-2 text-sm text-gray-700 focus:outline-none focus:border-[#057AF8]">
-              <option>All Status</option>
-              <option>Active</option>
-              <option>Inactive</option>
-              <option>On Leave</option>
-            </select>
+            <FilterSelect
+              value={filterDepartment}
+              onChange={setFilterDepartment}
+              options={["Design", "Engineering", "Marketing"]}
+              placeholder="All Departments"
+            />
+            <FilterSelect
+              value={filterStatus}
+              onChange={setFilterStatus}
+              options={["Active", "Inactive", "On Leave"]}
+              placeholder="All Status"
+            />
           </div>
         </div>
 
