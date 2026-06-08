@@ -56,6 +56,28 @@ export interface Lead {
   [key: string]: any;
 }
 
+export interface Renewal {
+  id?: number;
+  companyName?: string;
+  clientName?: string;
+  domainName?: string;
+  serviceType?: string;
+  domainProvider?: string;
+  serverProvider?: string;
+  planName?: string;
+  billingCycle?: string;
+  startDate?: string;
+  expiryDate?: string;
+  amount?: string | number;
+  amountPaid?: string | number;
+  reminderStage?: string;
+  paymentStatus?: string;
+  notes?: string;
+  createdOn?: string;
+  isActive?: boolean | string;
+  [key: string]: any;
+}
+
 export const authApi = {
   login: async (credentials: any) => {
     const res = await fetch(`${BASE_URL}/User/GenerateToken`, {
@@ -63,9 +85,17 @@ export const authApi = {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(credentials),
+      // .NET APIs often expect PascalCase by default if not configured otherwise
+      body: JSON.stringify({
+        Email: credentials.email,
+        Password: credentials.password
+      }),
     });
-    if (!res.ok) throw new Error('Login failed');
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("Login API Error:", errText, res.status);
+      throw new Error(`Login failed: ${res.statusText}`);
+    }
     return res.text();
   },
   logout: () => {
@@ -170,6 +200,69 @@ export const leadsApi = {
       method: 'POST',
     });
     if (!res.ok) throw new Error('Failed to delete lead');
+    return res.text();
+  },
+};
+
+export const renewalsApi = {
+  getAll: async () => {
+    const res = await fetchWithAuth(`/User/GetAllRenewals`);
+    if (!res.ok) throw new Error('Failed to fetch renewals');
+    const data = await res.json();
+    return data
+      .filter((item: any) => item.isActive !== false && item.isActive !== 'false')
+      .map((item: any) => ({
+        ...item,
+        id: item.id,
+        companyName: item.companyName || '',
+        clientName: item.clientName || '',
+        domainName: item.domainName || '',
+        serviceType: item.serviceType || '',
+        domainProvider: item.domainProvider || '',
+        serverProvider: item.serverProvider || '',
+        planName: item.planName || '',
+        billingCycle: item.billingCycle || '',
+        startDate: item.startDate || '',
+        expiryDate: item.expiryDate || '',
+        amount: item.amount || 0,
+        amountPaid: item.amountPaid || 0,
+        reminderStage: item.reminderStage || '',
+        paymentStatus: item.paymentStatus || '',
+        notes: item.notes || '',
+      }));
+  },
+  addOrUpdate: async (renewal: Renewal) => {
+    const formData = new FormData();
+    if (renewal.id) formData.append('ID', renewal.id.toString());
+    formData.append('CompanyName', renewal.companyName || '');
+    formData.append('ClientName', renewal.clientName || '');
+    formData.append('DomainName', renewal.domainName || '');
+    formData.append('ServiceType', renewal.serviceType || '');
+    formData.append('DomainProvider', renewal.domainProvider || '');
+    formData.append('ServerProvider', renewal.serverProvider || '');
+    formData.append('PlanName', renewal.planName || '');
+    formData.append('BillingCycle', renewal.billingCycle || '');
+    formData.append('StartDate', renewal.startDate || '');
+    formData.append('ExpiryDate', renewal.expiryDate || '');
+    formData.append('Amount', (renewal.amount || 0).toString());
+    formData.append('AmountPaid', (renewal.amountPaid || 0).toString());
+    formData.append('ReminderStage', renewal.reminderStage || '');
+    formData.append('PaymentStatus', renewal.paymentStatus || '');
+    formData.append('Notes', renewal.notes || '');
+    formData.append('IsActive', 'true');
+
+    const res = await fetchWithAuth(`/User/User/AddOrUpdateRenewal`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) throw new Error('Failed to save renewal');
+    return res.text();
+  },
+  delete: async (id: number) => {
+    const res = await fetchWithAuth(`/User/DeleteRenewal?ID=${id}`, {
+      method: 'GET',
+    });
+    if (!res.ok) throw new Error('Failed to delete renewal');
     return res.text();
   },
 };

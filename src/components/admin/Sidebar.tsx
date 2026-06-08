@@ -11,7 +11,8 @@ import {
   Settings,
   LogOut,
   Sparkles,
-  Inbox
+  Inbox,
+  RefreshCcw
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -19,6 +20,7 @@ const navItems = [
   { name: "Dashboard", href: "/admin", icon: LayoutDashboard },
   { name: "Leads", href: "/admin/leads", icon: Inbox },
   { name: "Deals & Projects", href: "/admin/deals", icon: Briefcase },
+  { name: "Renewals", href: "/admin/renewals", icon: RefreshCcw },
   { name: "Employees", href: "/admin/employees", icon: Users },
   { name: "Content Management", href: "/admin/content", icon: FileText },
 ];

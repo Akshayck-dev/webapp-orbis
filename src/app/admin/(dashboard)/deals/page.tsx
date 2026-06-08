@@ -374,7 +374,7 @@ export default function DealsPage() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-10">
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-10 shrink-0">
                 <h2 className="text-xl font-bold text-[#17204E]">
                   {editingDeal ? 'Edit Deal' : 'Add New Deal'}
                 </h2>
@@ -386,7 +386,7 @@ export default function DealsPage() {
                 </button>
               </div>
 
-              <div className="p-6 overflow-y-auto">
+              <div className="p-6 overflow-y-auto flex-1" style={{ maxHeight: 'calc(90vh - 140px)' }} data-lenis-prevent>
                 <form id="deal-form" onSubmit={handleSaveDeal} className="space-y-6">
                   {submitError && (
                     <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg">
